@@ -1,0 +1,24 @@
+{
+  "name": "nutrifit",
+  "version": "0.2.0",
+  "description": "PWA de nutricion y ejercicio personalizada con prueba gratis de 7 dias y plan Pro via Stripe",
+  "main": "server.js",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js",
+    "check": "node --check server.js && node --check lib/config.js && node --check lib/db.js && node --check lib/mailer.js && node --check lib/security.js && node --check lib/plan.js && node --check public/app.js && node --check public/sw.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "stripe": "^16.12.0"
+  }
+}

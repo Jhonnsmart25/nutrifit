@@ -1,0 +1,18 @@
+{
+  "name": "NutriFit",
+  "short_name": "NutriFit",
+  "description": "Tu plan de comida, bebidas y ejercicio según tu cuerpo.",
+  "lang": "es-MX",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f2f9",
+  "theme_color": "#241b3a",
+  "categories": ["health", "fitness", "food"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

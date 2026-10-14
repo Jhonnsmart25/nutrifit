@@ -1,0 +1,37 @@
+# Blueprint de Render (opcional). Si subes el proyecto a GitHub, en Render elige
+# New > Blueprint y apunta a tu repositorio: crea el servicio y te pide los valores secretos.
+services:
+  - type: web
+    name: nutrifit
+    runtime: node
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: APP_URL
+        sync: false          # ej. https://nutrifit.onrender.com o tu dominio propio
+      - key: JWT_SECRET
+        generateValue: true  # Render genera un valor aleatorio seguro
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_ID
+        sync: false
+      # ANTHROPIC_API_KEY es opcional: agrégala a mano en Environment si quieres el análisis de foto con IA
+      - key: TRIAL_DAYS
+        value: "7"
+      - key: PHOTO_DAILY_LIMIT
+        value: "5"
