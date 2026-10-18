@@ -20,10 +20,10 @@ services:
         sync: false
       - key: SUPABASE_SECRET_KEY
         sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      - key: EMAIL_FROM
-        sync: false
+      - key: REQUIRE_EMAIL_VERIFICATION
+        value: "false"       # "true" obliga a confirmar el correo (necesita Resend con dominio verificado)
+      # RESEND_API_KEY y EMAIL_FROM son opcionales mientras la verificación esté en "false".
+      # Sin ellas no hay "¿Olvidaste tu contraseña?". Agrégalas en Environment cuando verifiques tu dominio.
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET

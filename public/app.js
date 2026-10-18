@@ -38,7 +38,16 @@ const store = {
 const state = {
   token: store.get(), user: null, plan: null, photoInsight: null, tab: 'plan', day: null, deferredInstall: null,
   auth: { view: 'register', email: '', message: '', kind: '', resetToken: null },
+  config: { requireEmailVerification: false, emailEnabled: false }, // lo que dice el servidor; ver loadAuthConfig
 };
+
+// Pregunta al servidor si pide confirmar el correo y si puede mandar correos (para mostrar "¿Olvidaste tu contraseña?")
+async function loadAuthConfig() {
+  try {
+    const r = await fetch('/api/auth/config');
+    if (r.ok) state.config = { ...state.config, ...(await r.json()) };
+  } catch { /* sin conexión: se quedan los valores por defecto */ }
+}
 
 async function api(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
@@ -142,6 +151,11 @@ function RegisterScreen() {
     try {
       const email = form.email.value.trim().toLowerCase();
       const d = await api('/auth/register', { method: 'POST', body: { email, password: form.password.value, acceptTerms: true } });
+      if (d.token) { // sin confirmar el correo: la cuenta ya está lista y la semana gratis ya empezó
+        state.token = d.token; store.set(d.token); state.user = d.user;
+        toast('¡Listo! Tu semana gratis ya empezó.', 4500);
+        return afterAuth();
+      }
       setAuth('check', { kind: 'verify', email, message: d.message });
     } catch (ex) { showError(err, ex.message); btn.disabled = false; }
   } },
@@ -158,7 +172,8 @@ function RegisterScreen() {
   return authShell(
     h('div', { class: 'hero' },
       h('h1', {}, 'Come y muévete según tu cuerpo.'),
-      h('p', {}, 'Dinos tu estatura, peso y estilo de vida. Te armamos comidas, bebidas y rutinas para la semana. Pruébalo 7 días gratis; la semana empieza cuando confirmes tu correo.')),
+      h('p', {}, 'Dinos tu estatura, peso y estilo de vida. Te armamos comidas, bebidas y rutinas para la semana. Pruébalo 7 días gratis' +
+        (state.config.requireEmailVerification ? '; la semana empieza cuando confirmes tu correo.' : ': empieza en cuanto crees tu cuenta.'))),
     installBanner(),
     form,
     h('button', { class: 'linkbtn', type: 'button', onclick: () => setAuth('login') }, 'Ya tengo cuenta'),
@@ -191,7 +206,7 @@ function LoginScreen() {
   return authShell(
     h('div', { class: 'hero' }, h('h1', {}, 'Qué bueno verte de nuevo.'), h('p', {}, 'Entra para ver el plan de hoy.')),
     form,
-    h('button', { class: 'linkbtn', type: 'button', onclick: () => setAuth('forgot') }, '¿Olvidaste tu contraseña?'),
+    state.config.emailEnabled ? h('button', { class: 'linkbtn', type: 'button', onclick: () => setAuth('forgot') }, '¿Olvidaste tu contraseña?') : null,
     h('button', { class: 'linkbtn', type: 'button', onclick: () => setAuth('register') }, 'Crear una cuenta'),
   );
 }
@@ -526,7 +541,7 @@ function MeView() {
       h('div', { class: 'kv' }, h('span', {}, 'Sexo'), h('b', {}, sexLabel)),
       h('div', { class: 'kv' }, h('span', {}, 'Actividad'), h('b', {}, actLabel)),
       h('button', { class: 'btn ghost small', type: 'button', onclick: () => { state.editing = true; render(); } }, 'Actualizar mis datos')),
-    PhotoCard(),
+    u.photoEnabled ? PhotoCard() : null,
     installBanner(),
     u.isPro && u.billingEnabled ? h('button', { class: 'btn ghost', type: 'button', onclick: async () => {
       try { const d = await api('/billing/portal', { method: 'POST' }); location.href = d.url; } catch (e) { toast(e.message); }
@@ -611,6 +626,7 @@ function InsightBox(i) {
 /* ---------- Arranque ---------- */
 async function boot() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  await loadAuthConfig();
 
   const q = new URLSearchParams(location.search);
   const route = location.pathname.replace(/\/+$/, '');

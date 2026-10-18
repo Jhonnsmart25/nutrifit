@@ -135,6 +135,8 @@ function publicUser(u) {
     photoInsight: u.photoInsight || null,
     billingEnabled: !!stripe,
     photoAI: !!cfg.anthropic,
+    // Sin clave de Anthropic, en producción la función de foto no se ofrece (evita mostrar un análisis falso)
+    photoEnabled: !!cfg.anthropic || !cfg.isProd,
   };
 }
 
@@ -192,7 +194,11 @@ async function issueAccountExistsNotice(user) {
 const GENERIC_SENT = 'Si el correo es válido, te enviamos un mensaje. Revisa tu bandeja de entrada y la carpeta de spam.';
 
 // ---------- Cuentas ----------
-// Registro: la respuesta es igual exista o no el correo (no revela quién tiene cuenta).
+// La app consulta esto para saber qué pantallas mostrar (por ejemplo, si existe "¿Olvidaste tu contraseña?")
+app.get('/api/auth/config', (req, res) => res.json({ requireEmailVerification: cfg.requireEmailVerification, emailEnabled: cfg.emailEnabled }));
+
+// Registro. Con REQUIRE_EMAIL_VERIFICATION=true la respuesta es igual exista o no el correo (no revela quién tiene cuenta).
+// Con la verificación apagada la cuenta queda confirmada y la semana gratis empieza al instante.
 app.post('/api/auth/register', ipLimit('register', 10, 60 * 60 * 1000), wrap(async (req, res) => {
   const email = sec.normalizeEmail(req.body.email);
   const password = req.body.password;
@@ -203,6 +209,20 @@ app.post('/api/auth/register', ipLimit('register', 10, 60 * 60 * 1000), wrap(asy
 
   const canonical = sec.canonicalEmail(email);
   const passwordHash = await bcrypt.hash(password, BCRYPT_COST); // siempre se calcula: el tiempo no delata si el correo ya existe
+
+  // Sin verificación de correo: la cuenta queda confirmada y la prueba de 7 días empieza ya. La persona entra de
+  // inmediato, así que aquí no se puede ocultar si el correo ya existe: se le dice.
+  if (!cfg.requireEmailVerification) {
+    const now = Date.now();
+    try {
+      const user = await db.create({ email, emailCanonical: canonical, passwordHash, emailVerifiedAt: now, trialStartedAt: now, termsAcceptedAt: now, isPro: false, tokenVersion: 0, photoCount: 0 });
+      return res.json({ token: signToken(user), user: publicUser(user) });
+    } catch (e) {
+      if (e.code === 'EMAIL_TAKEN') return res.status(409).json({ error: 'Ese correo ya tiene una cuenta. Entra con tu contraseña.', code: 'EMAIL_TAKEN' });
+      throw e;
+    }
+  }
+
   let existing = await db.findByCanonicalEmail(canonical);
   let created = null;
 
@@ -266,19 +286,27 @@ app.post('/api/auth/login', ipLimit('login', 30, 15 * 60 * 1000), wrap(async (re
   const user = await db.findByCanonicalEmail(canonical);
   const ok = await bcrypt.compare(password.slice(0, 200), user ? user.passwordHash : DUMMY_HASH);
   if (!user || !ok) return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
-  if (!user.emailVerifiedAt) return res.status(403).json({ error: 'Primero confirma tu correo. Te enviamos un enlace cuando creaste tu cuenta.', code: 'EMAIL_NOT_VERIFIED', email: user.email });
-  res.json({ token: signToken(user), user: publicUser(user) });
+  let current = user;
+  if (!current.emailVerifiedAt) {
+    if (cfg.requireEmailVerification) return res.status(403).json({ error: 'Primero confirma tu correo. Te enviamos un enlace cuando creaste tu cuenta.', code: 'EMAIL_NOT_VERIFIED', email: user.email });
+    // Cuenta creada cuando aún se pedía confirmar el correo: con la verificación apagada se confirma al entrar
+    const now = Date.now();
+    current = await db.update(current.id, { emailVerifiedAt: now, trialStartedAt: current.trialStartedAt || now });
+  }
+  res.json({ token: signToken(current), user: publicUser(current) });
 }));
 
 app.post('/api/auth/forgot', ipLimit('forgot', 10, 60 * 60 * 1000), wrap(async (req, res) => {
   const email = sec.normalizeEmail(req.body.email);
+  // Sin Resend no hay forma de mandar el enlace: se dice claro en vez de prometer un correo que no llegará
+  if (!cfg.emailEnabled) return res.status(503).json({ error: 'Recuperar la contraseña no está disponible por ahora. Escríbenos y te ayudamos.' });
   res.json({ ok: true, message: GENERIC_SENT }); // misma respuesta exista o no la cuenta
   if (!sec.isValidEmail(email) || tooMany(`forgot|${sec.canonicalEmail(email)}`, 3, 60 * 60 * 1000)) return;
   background('olvidé contraseña', async () => {
     const user = await db.findByCanonicalEmail(sec.canonicalEmail(email));
     if (!user) return;
-    if (user.emailVerifiedAt) await issueReset(user);
-    else await issueVerification(user); // si nunca confirmó el correo, primero debe confirmarlo
+    if (user.emailVerifiedAt || !cfg.requireEmailVerification) await issueReset(user);
+    else await issueVerification(user); // con verificación activa: si nunca confirmó el correo, primero debe confirmarlo
   });
 }));
 
@@ -373,6 +401,7 @@ app.post('/api/photo', auth, requireAccess, (req, res, next) => {
 
 async function handlePhoto(req, res) {
   const u = req.user;
+  if (!cfg.anthropic && cfg.isProd) return res.status(503).json({ error: 'El análisis de foto no está disponible por ahora.' });
   if (req.body.consent !== 'true') return res.status(400).json({ error: 'Debes aceptar el aviso de privacidad para enviar una foto.' });
   if (!req.file) return res.status(400).json({ error: 'No se recibió ninguna imagen.' });
   if (!u.profile) return res.status(400).json({ error: 'Primero completa tu perfil.' });
